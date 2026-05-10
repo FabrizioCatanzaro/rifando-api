@@ -4,11 +4,12 @@ import * as authService from './auth.service';
 import { env } from '../../config/env';
 import type { AuthRequest } from '../../middleware/auth';
 
+const isProd = env.NODE_ENV === 'production';
+
 const COOKIE_OPTS = {
   httpOnly: true,
-  secure: env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  domain: env.NODE_ENV === 'production' ? env.COOKIE_DOMAIN : undefined,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'strict') as 'none' | 'strict',
 };
 
 export async function register(req: Request, res: Response, next: NextFunction) {

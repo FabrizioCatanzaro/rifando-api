@@ -10,7 +10,6 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
   FRONTEND_URL: z.string().url(),
-  COOKIE_DOMAIN: z.string().default('localhost'),
 });
 
 const parsed = envSchema.safeParse(process.env);
