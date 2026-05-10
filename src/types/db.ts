@@ -19,6 +19,10 @@ export interface UsersTable {
   display_name: string | null;
   avatar_url: string | null;
   whatsapp_number: string | null;
+  transfer_alias: string | null;
+  transfer_holder: string | null;
+  transfer_cuit: string | null;
+  transfer_bank: string | null;
   profile_public: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;

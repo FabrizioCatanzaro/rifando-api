@@ -70,7 +70,7 @@ export async function getRaffleById(raffleId: string, userId?: string) {
 export async function getRaffleBySlug(username: string, slug: string, accessCode?: string) {
   const user = await db
     .selectFrom('users')
-    .select(['id', 'username', 'display_name', 'whatsapp_number'])
+    .select(['id', 'username', 'display_name', 'whatsapp_number', 'transfer_alias', 'transfer_holder', 'transfer_cuit', 'transfer_bank'])
     .where('username', '=', username)
     .executeTakeFirst();
 
@@ -109,7 +109,7 @@ export async function getRaffleBySlug(username: string, slug: string, accessCode
 }
 
 export async function createRaffle(userId: string, input: CreateRaffleInput) {
-  const slug = generateSlug(input.title);
+  const slug = generateSlug();
 
   const raffle = await db
     .insertInto('raffles')
