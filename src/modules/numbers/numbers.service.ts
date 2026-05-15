@@ -1,5 +1,6 @@
 import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
+import { notifyReservation } from '../../utils/notifier';
 import type { ReserveInput, SellNumberInput, UpdateBuyerInput, BulkSellInput, BulkReleaseInput } from './numbers.schemas';
 
 const RESERVATION_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -119,6 +120,10 @@ export async function reserveNumbers(raffleId: string, input: ReserveInput) {
       reserved.push(number);
     }
   });
+
+  if (reserved.length > 0 && input.buyer_name) {
+    notifyReservation(raffleId, reserved, input.buyer_name).catch(() => {});
+  }
 
   return { reserved, failed, expires_at: expiresAt };
 }
