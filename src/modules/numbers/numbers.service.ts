@@ -2,7 +2,7 @@ import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import type { ReserveInput, SellNumberInput, UpdateBuyerInput, BulkSellInput, BulkReleaseInput } from './numbers.schemas';
 
-const RESERVATION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const RESERVATION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 async function cleanExpiredReservations(raffleId: string) {
   const expired = await db
@@ -29,7 +29,7 @@ export async function getNumbers(raffleId: string) {
   const [numbers, reservations] = await Promise.all([
     db
       .selectFrom('raffle_numbers')
-      .select(['number', 'status', 'buyer_name'])
+      .select(['number', 'status', 'buyer_name', 'sold_at'])
       .where('raffle_id', '=', raffleId)
       .orderBy('number', 'asc')
       .execute(),

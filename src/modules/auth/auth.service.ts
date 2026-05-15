@@ -133,6 +133,10 @@ export async function getUserById(userId: string) {
       'display_name',
       'avatar_url',
       'whatsapp_number',
+      'transfer_alias',
+      'transfer_holder',
+      'transfer_cuit',
+      'transfer_bank',
       'profile_public',
       'created_at',
     ])
