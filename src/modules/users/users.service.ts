@@ -52,7 +52,27 @@ export async function getPublicRaffles(username: string) {
     .orderBy('created_at', 'desc')
     .execute();
 
-  return { private: false, raffles };
+  if (raffles.length === 0) return { private: false, raffles: [] };
+
+  const raffleIds = raffles.map((r) => r.id);
+
+  const soldCounts = await db
+    .selectFrom('raffle_numbers')
+    .select(['raffle_id', db.fn.count('id').as('sold')])
+    .where('raffle_id', 'in', raffleIds)
+    .where('status', '=', 'sold')
+    .groupBy('raffle_id')
+    .execute();
+
+  const soldMap = new Map(soldCounts.map((r) => [r.raffle_id, Number(r.sold)]));
+
+  return {
+    private: false,
+    raffles: raffles.map((r) => ({
+      ...r,
+      stats: { sold: soldMap.get(r.id) ?? 0, reserved: 0, total: r.total_numbers },
+    })),
+  };
 }
 
 export async function updateProfile(userId: string, input: UpdateProfileInput) {
