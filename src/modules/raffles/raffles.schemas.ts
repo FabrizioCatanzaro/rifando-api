@@ -16,6 +16,7 @@ export const createRaffleSchema = z.object({
   draw_date: z.string().optional().nullable().transform((v) => v || undefined),
   prize_assignment_mode: z.enum(['automatic', 'sequential_choice']).default('automatic'),
   rich_content: z.record(z.unknown()).optional(),
+  confirmation_method: z.enum(['whatsapp', 'upload']).default('whatsapp'),
 });
 
 export const updateRaffleSchema = createRaffleSchema.partial();

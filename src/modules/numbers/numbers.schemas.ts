@@ -4,6 +4,7 @@ export const reserveSchema = z.object({
   numbers: z.array(z.number().int().min(0)).min(1).max(50),
   session_id: z.string().min(1).max(100),
   buyer_name: z.string().min(1).max(150).optional(),
+  comprobante_url: z.string().url().optional(),
 });
 
 export const bulkSellSchema = z.object({

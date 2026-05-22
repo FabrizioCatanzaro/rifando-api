@@ -106,12 +106,14 @@ export async function reserveNumbers(raffleId: string, input: ReserveInput) {
           number,
           session_id: input.session_id,
           buyer_name: input.buyer_name ?? null,
+          comprobante_url: input.comprobante_url ?? null,
           expires_at: expiresAt,
         })
         .onConflict((oc) =>
           oc.columns(['raffle_id', 'number']).doUpdateSet({
             session_id: input.session_id,
             buyer_name: input.buyer_name ?? null,
+            comprobante_url: input.comprobante_url ?? null,
             expires_at: expiresAt,
           })
         )

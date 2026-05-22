@@ -9,6 +9,24 @@ cloudinary.config({
   api_secret: env.CLOUDINARY_API_SECRET,
 });
 
+export async function uploadComprobante(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { data } = req.body as { data?: string };
+
+    if (!data) throw new AppError('Se requiere imagen en base64', 400);
+    if (!data.startsWith('data:image/')) throw new AppError('Formato de imagen inválido', 400);
+
+    const result = await cloudinary.uploader.upload(data, {
+      folder: 'rifando/comprobantes',
+      transformation: [{ quality: 'auto', fetch_format: 'auto', width: 1600, crop: 'limit' }],
+    });
+
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function uploadImage(req: Request, res: Response, next: NextFunction) {
   try {
     const { data, folder } = req.body as { data?: string; folder?: string };

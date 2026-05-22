@@ -45,6 +45,7 @@ export interface RafflesTable {
   prize_assignment_mode: 'automatic' | 'sequential_choice';
   winner_number: number | null;
   rich_content: string | null;
+  confirmation_method: Generated<'whatsapp' | 'upload'>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -65,6 +66,7 @@ export interface NumberReservationsTable {
   number: number;
   session_id: string;
   buyer_name: string | null;
+  comprobante_url: string | null;
   expires_at: Date;
   created_at: Generated<Date>;
 }

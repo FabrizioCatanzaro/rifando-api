@@ -128,6 +128,7 @@ export async function createRaffle(userId: string, input: CreateRaffleInput) {
       draw_date: input.draw_date ? new Date(input.draw_date) : null,
       prize_assignment_mode: input.prize_assignment_mode,
       rich_content: input.rich_content ? JSON.stringify(input.rich_content) : null,
+      confirmation_method: input.confirmation_method,
     })
     .returningAll()
     .executeTakeFirstOrThrow();
