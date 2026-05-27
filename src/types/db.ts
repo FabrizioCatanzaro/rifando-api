@@ -9,6 +9,7 @@ export interface Database {
   promotions: PromotionsTable;
   refresh_tokens: RefreshTokensTable;
   migrations: MigrationsTable;
+  raffle_draw_payments: RaffleDrawPaymentsTable;
 }
 
 export interface UsersTable {
@@ -46,6 +47,7 @@ export interface RafflesTable {
   winner_number: number | null;
   rich_content: string | null;
   confirmation_method: Generated<'whatsapp' | 'upload'>;
+  draw_unlocked: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -79,6 +81,7 @@ export interface PrizesTable {
   image_url: string | null;
   position: number;
   winner_number: number | null;
+  substitute_numbers: Generated<number[]>;
   created_at: Generated<Date>;
 }
 
@@ -102,6 +105,15 @@ export interface RefreshTokensTable {
   expires_at: Date;
   revoked: Generated<boolean>;
   created_at: Generated<Date>;
+}
+
+export interface RaffleDrawPaymentsTable {
+  id: Generated<string>;
+  raffle_id: string;
+  comprobante_url: string;
+  status: Generated<'pending' | 'approved' | 'rejected'>;
+  created_at: Generated<Date>;
+  reviewed_at: Date | null;
 }
 
 export interface MigrationsTable {

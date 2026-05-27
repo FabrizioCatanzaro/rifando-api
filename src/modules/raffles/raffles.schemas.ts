@@ -22,7 +22,7 @@ export const createRaffleSchema = z.object({
 export const updateRaffleSchema = createRaffleSchema.partial();
 
 export const finishRaffleSchema = z.object({
-  winner_number: z.number().int().min(0),
+  winner_number: z.number().int().min(0).optional().nullable(),
 });
 
 export type CreateRaffleInput = z.infer<typeof createRaffleSchema>;

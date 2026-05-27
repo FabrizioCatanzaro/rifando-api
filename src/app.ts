@@ -14,6 +14,8 @@ import numbersRoutes from './modules/numbers/numbers.routes';
 import prizesRoutes from './modules/prizes/prizes.routes';
 import promotionsRoutes from './modules/promotions/promotions.routes';
 import uploadRoutes from './modules/upload/upload.routes';
+import drawRoutes from './modules/draw/draw.routes';
+import adminRoutes from './modules/admin/admin.routes';
 import * as rafflesController from './modules/raffles/raffles.controller';
 
 const app = express();
@@ -45,6 +47,8 @@ app.use('/api/raffles/:raffleId/numbers', numbersRoutes);
 app.use('/api/raffles/:raffleId/prizes', prizesRoutes);
 app.use('/api/raffles/:raffleId/promotions', promotionsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/raffles/:raffleId', drawRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 

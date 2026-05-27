@@ -105,7 +105,37 @@ export async function getRaffleBySlug(username: string, slug: string, accessCode
     .where('active', '=', true)
     .execute();
 
-  return { raffle, owner: user, prizes, promotions };
+  // When finished, enrich prizes with buyer names for winners/substitutes
+  let enrichedPrizes = prizes.map((p) => ({ ...p, winner_buyer_name: null as string | null, substitutes: [] as { number: number; buyer_name: string | null }[] }));
+
+  if (raffle.status === 'finished') {
+    const allWinnerNumbers = prizes.flatMap((p) => {
+      const subs = Array.isArray(p.substitute_numbers) ? (p.substitute_numbers as number[]) : [];
+      return p.winner_number !== null ? [p.winner_number, ...subs] : subs;
+    });
+
+    if (allWinnerNumbers.length > 0) {
+      const buyerRows = await db
+        .selectFrom('raffle_numbers')
+        .select(['number', 'buyer_name'])
+        .where('raffle_id', '=', raffle.id)
+        .where('number', 'in', allWinnerNumbers)
+        .execute();
+
+      const buyerMap = new Map(buyerRows.map((r) => [r.number, r.buyer_name]));
+
+      enrichedPrizes = prizes.map((p) => {
+        const subs = Array.isArray(p.substitute_numbers) ? (p.substitute_numbers as number[]) : [];
+        return {
+          ...p,
+          winner_buyer_name: p.winner_number !== null ? (buyerMap.get(p.winner_number) ?? null) : null,
+          substitutes: subs.map((n) => ({ number: n, buyer_name: buyerMap.get(n) ?? null })),
+        };
+      });
+    }
+  }
+
+  return { raffle, owner: user, prizes: enrichedPrizes, promotions };
 }
 
 export async function createRaffle(userId: string, input: CreateRaffleInput) {
@@ -215,13 +245,15 @@ export async function finishRaffle(raffleId: string, userId: string, input: Fini
   if (!raffle) throw new AppError('Rifa no encontrada', 404);
   if (raffle.user_id !== userId) throw new AppError('Sin permiso', 403);
 
-  if (input.winner_number < 0 || input.winner_number >= raffle.total_numbers) {
-    throw new AppError('Número ganador fuera de rango', 400);
+  if (input.winner_number != null) {
+    if (input.winner_number < 0 || input.winner_number >= raffle.total_numbers) {
+      throw new AppError('Número ganador fuera de rango', 400);
+    }
   }
 
   const updated = await db
     .updateTable('raffles')
-    .set({ status: 'finished', winner_number: input.winner_number, updated_at: new Date() })
+    .set({ status: 'finished', winner_number: input.winner_number ?? null, updated_at: new Date() })
     .where('id', '=', raffleId)
     .returningAll()
     .executeTakeFirstOrThrow();

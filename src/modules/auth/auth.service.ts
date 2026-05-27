@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt';
+import { env } from '../../config/env';
 import type { RegisterInput, LoginInput } from './auth.schemas';
 
 const BCRYPT_ROUNDS = 12;
@@ -124,7 +125,7 @@ export async function revokeRefreshToken(rawRefreshToken: string) {
 }
 
 export async function getUserById(userId: string) {
-  return db
+  const user = await db
     .selectFrom('users')
     .select([
       'id',
@@ -142,4 +143,7 @@ export async function getUserById(userId: string) {
     ])
     .where('id', '=', userId)
     .executeTakeFirst();
+
+  if (!user) return undefined;
+  return { ...user, is_admin: !!(env.ADMIN_USER_ID && user.id === env.ADMIN_USER_ID) };
 }

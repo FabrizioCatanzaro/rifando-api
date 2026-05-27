@@ -8,7 +8,8 @@ export const createPrizeSchema = z.object({
 });
 
 export const updatePrizeSchema = createPrizeSchema.partial().extend({
-  winner_number: z.number().int().min(0).optional(),
+  winner_number: z.number().int().min(0).optional().nullable(),
+  substitute_numbers: z.array(z.number().int().min(0)).optional(),
 });
 
 export type CreatePrizeInput = z.infer<typeof createPrizeSchema>;

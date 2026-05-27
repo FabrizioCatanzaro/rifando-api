@@ -41,11 +41,12 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     );
 
     const { password_hash: _, ...safeUser } = user;
+    const is_admin = !!(env.ADMIN_USER_ID && user.id === env.ADMIN_USER_ID);
 
     res
       .cookie('access_token', accessToken, { ...COOKIE_OPTS, maxAge: 2 * 60 * 60 * 1000 })
       .cookie('refresh_token', refreshToken, { ...COOKIE_OPTS, maxAge: 7 * 24 * 60 * 60 * 1000 })
-      .json({ user: safeUser });
+      .json({ user: { ...safeUser, is_admin } });
   } catch (err) {
     next(err);
   }
