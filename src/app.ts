@@ -16,6 +16,7 @@ import promotionsRoutes from './modules/promotions/promotions.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import drawRoutes from './modules/draw/draw.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import telegramRoutes from './modules/telegram/telegram.routes';
 import * as rafflesController from './modules/raffles/raffles.controller';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/raffles/:raffleId/promotions', promotionsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/raffles/:raffleId', drawRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/telegram', telegramRoutes);
 
 app.use(errorHandler);
 

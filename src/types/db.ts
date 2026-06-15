@@ -24,6 +24,10 @@ export interface UsersTable {
   transfer_holder: string | null;
   transfer_cuit: string | null;
   transfer_bank: string | null;
+  telegram_chat_id: string | null;
+  telegram_username: string | null;
+  telegram_link_token: string | null;
+  telegram_link_expires_at: Date | null;
   profile_public: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;

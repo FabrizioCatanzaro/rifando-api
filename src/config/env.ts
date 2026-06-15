@@ -14,6 +14,8 @@ const envSchema = z.object({
   RESEND_FROM: z.string().min(1).optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_CHAT_ID: z.string().min(1).optional(),
+  TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
   ADMIN_USER_ID: z.string().optional(),
 });
 
