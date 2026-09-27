@@ -10,6 +10,15 @@ export interface Database {
   refresh_tokens: RefreshTokensTable;
   migrations: MigrationsTable;
   raffle_draw_payments: RaffleDrawPaymentsTable;
+  purchases: PurchasesTable;
+  username_history: UsernameHistoryTable;
+}
+
+export interface UsernameHistoryTable {
+  id: Generated<string>;
+  user_id: string;
+  username: string;
+  changed_at: Generated<Date>;
 }
 
 export interface UsersTable {
@@ -28,6 +37,7 @@ export interface UsersTable {
   telegram_username: string | null;
   telegram_link_token: string | null;
   telegram_link_expires_at: Date | null;
+  username_changed_at: Date | null;
   profile_public: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -64,6 +74,8 @@ export interface RaffleNumbersTable {
   buyer_name: string | null;
   buyer_phone: string | null;
   sold_at: Date | null;
+  purchase_id: string | null;
+  sale_amount: number | null;
 }
 
 export interface NumberReservationsTable {
@@ -73,8 +85,29 @@ export interface NumberReservationsTable {
   session_id: string;
   buyer_name: string | null;
   comprobante_url: string | null;
-  expires_at: Date;
+  purchase_id: string | null;
+  /** null = no vence */
+  expires_at: Date | null;
   created_at: Generated<Date>;
+}
+
+export type PurchaseStatus = 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled';
+
+export interface PurchasesTable {
+  id: Generated<string>;
+  raffle_id: string;
+  session_id: string;
+  buyer_name: string;
+  quantity: number;
+  total: number;
+  promotion_label: string | null;
+  comprobante_url: string | null;
+  status: Generated<PurchaseStatus>;
+  /** null = no vence (compra con comprobante) */
+  expires_at: Date | null;
+  ip: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface PrizesTable {
@@ -137,3 +170,4 @@ export type RaffleUpdate = Updateable<RafflesTable>;
 export type RaffleNumber = Selectable<RaffleNumbersTable>;
 export type Prize = Selectable<PrizesTable>;
 export type Promotion = Selectable<PromotionsTable>;
+export type Purchase = Selectable<PurchasesTable>;

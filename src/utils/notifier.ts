@@ -1,7 +1,7 @@
 import { env } from '../config/env';
 import { db } from '../db/client';
-import type { Promotion } from '../types/db';
-import { notifyReservationEmail } from './mailer';
+import { escapeHtml } from './html';
+import { notifyReservationEmail, type ReservationEmailData } from './mailer';
 
 const priceFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -9,61 +9,29 @@ const priceFormatter = new Intl.NumberFormat('es-AR', {
   minimumFractionDigits: 0,
 });
 
-// Misma lógica que el frontend (src/lib/whatsapp.ts) para que el total
-// del mensaje coincida con el precio final que ve el comprador.
-function calculatePrice(
-  count: number,
-  pricePerNumber: number,
-  promotions: Promotion[]
-): { total: number; promotionLabel?: string } {
-  const active = promotions.filter((p) => p.active);
-
-  for (const promo of active) {
-    if (count >= promo.quantity) {
-      if (promo.type === 'pack' && promo.price !== null) {
-        const packs = Math.floor(count / promo.quantity);
-        const remaining = count % promo.quantity;
-        const total = packs * promo.price + remaining * pricePerNumber;
-        return { total, promotionLabel: promo.label };
-      }
-      if (promo.type === 'percentage' && promo.discount_percentage !== null) {
-        const total = count * pricePerNumber * (1 - promo.discount_percentage / 100);
-        return { total, promotionLabel: promo.label };
-      }
-      if (promo.type === 'bundle' && promo.free_numbers !== null) {
-        const sets = Math.floor(count / promo.quantity);
-        const free = sets * promo.free_numbers;
-        const paid = count - free;
-        return { total: paid * pricePerNumber, promotionLabel: promo.label };
-      }
-    }
-  }
-
-  return { total: count * pricePerNumber };
+export function formatPrice(value: number): string {
+  return priceFormatter.format(value);
 }
 
-async function notifyReservationTelegram(
-  chatId: string,
-  raffleTitle: string,
-  reserved: number[],
-  buyerName: string,
-  pricePerNumber: number,
-  promotions: Promotion[]
-) {
+async function notifyReservationTelegram(chatId: string, data: ReservationEmailData) {
   if (!env.TELEGRAM_BOT_TOKEN) return;
 
-  const plural = reserved.length > 1 ? 'Números' : 'Número';
-  const { total, promotionLabel } = calculatePrice(reserved.length, pricePerNumber, promotions);
+  const plural = data.numbers.length > 1 ? 'Números' : 'Número';
 
   let text =
     `🎟️ <b>Nueva reserva</b>\n\n` +
-    `<b>Rifa:</b> ${raffleTitle}\n` +
-    `<b>Comprador:</b> ${buyerName}\n` +
-    `<b>${plural}:</b> ${reserved.join(', ')}\n` +
-    `<b>Total:</b> ${priceFormatter.format(total)}`;
+    `<b>Rifa:</b> ${escapeHtml(data.raffleTitle)}\n` +
+    `<b>Comprador:</b> ${escapeHtml(data.buyerName)}\n` +
+    `<b>${plural}:</b> ${data.numbers.join(', ')}\n` +
+    `<b>Total:</b> ${formatPrice(data.total)}`;
 
-  if (promotionLabel) {
-    text += `\n<b>Promoción:</b> ${promotionLabel}`;
+  if (data.promotionLabel) text += `\n<b>Promoción:</b> ${escapeHtml(data.promotionLabel)}`;
+
+  if (data.comprobanteUrl) {
+    text += `\n\n📎 <a href="${escapeHtml(data.comprobanteUrl)}">Ver comprobante</a>`;
+    text += `\nLa reserva no vence hasta que la confirmes o rechaces.`;
+  } else {
+    text += `\n\n⏱️ La reserva vence en 30 minutos si no la confirmás.`;
   }
 
   await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -73,48 +41,46 @@ async function notifyReservationTelegram(
   });
 }
 
-export async function notifyReservation(
-  raffleId: string,
-  reserved: number[],
-  buyerName: string
-) {
-  const raffle = await db
-    .selectFrom('raffles')
+/** Avisa al rifante por email y Telegram (si lo vinculó) que entró una compra. */
+export async function notifyReservation(purchaseId: string) {
+  const row = await db
+    .selectFrom('purchases')
+    .innerJoin('raffles', 'raffles.id', 'purchases.raffle_id')
     .innerJoin('users', 'users.id', 'raffles.user_id')
     .select([
+      'purchases.buyer_name',
+      'purchases.total',
+      'purchases.promotion_label',
+      'purchases.comprobante_url',
+      'raffles.id as raffle_id',
       'raffles.title',
-      'raffles.price_per_number',
       'users.email',
       'users.telegram_chat_id',
     ])
-    .where('raffles.id', '=', raffleId)
+    .where('purchases.id', '=', purchaseId)
     .executeTakeFirst();
 
-  if (!raffle) return;
+  if (!row) return;
 
-  const tasks: Promise<unknown>[] = [
-    notifyReservationEmail(raffle.title, raffle.email, reserved, buyerName),
-  ];
+  const reservations = await db
+    .selectFrom('number_reservations')
+    .select(['number'])
+    .where('purchase_id', '=', purchaseId)
+    .orderBy('number', 'asc')
+    .execute();
 
-  // Solo le mandamos a Telegram al dueño que vinculó su cuenta.
-  if (raffle.telegram_chat_id) {
-    const promotions = await db
-      .selectFrom('promotions')
-      .selectAll()
-      .where('raffle_id', '=', raffleId)
-      .execute();
+  const data: ReservationEmailData = {
+    raffleId: row.raffle_id,
+    raffleTitle: row.title,
+    buyerName: row.buyer_name,
+    numbers: reservations.map((r) => r.number),
+    total: row.total,
+    promotionLabel: row.promotion_label,
+    comprobanteUrl: row.comprobante_url,
+  };
 
-    tasks.push(
-      notifyReservationTelegram(
-        raffle.telegram_chat_id,
-        raffle.title,
-        reserved,
-        buyerName,
-        raffle.price_per_number,
-        promotions
-      )
-    );
-  }
+  const tasks: Promise<unknown>[] = [notifyReservationEmail(row.email, data)];
+  if (row.telegram_chat_id) tasks.push(notifyReservationTelegram(row.telegram_chat_id, data));
 
   await Promise.allSettled(tasks);
 }

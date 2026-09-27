@@ -7,12 +7,13 @@ import {
   updateBuyerSchema,
   bulkSellSchema,
   bulkReleaseSchema,
+  confirmPurchaseSchema,
 } from './numbers.schemas';
-import type { AuthRequest } from '../../middleware/auth';
+import { getOptionalUserId, type AuthRequest } from '../../middleware/auth';
 
 export async function getNumbers(req: Request, res: Response, next: NextFunction) {
   try {
-    const numbers = await numbersService.getNumbers(req.params.raffleId as string);
+    const numbers = await numbersService.getNumbers(req.params.raffleId as string, getOptionalUserId(req));
     res.json({ numbers });
   } catch (err) {
     next(err);
@@ -22,7 +23,7 @@ export async function getNumbers(req: Request, res: Response, next: NextFunction
 export async function reserveNumbers(req: Request, res: Response, next: NextFunction) {
   try {
     const input = reserveSchema.parse(req.body);
-    const result = await numbersService.reserveNumbers(req.params.raffleId as string, input);
+    const result = await numbersService.reserveNumbers(req.params.raffleId as string, input, req.ip);
     res.json(result);
   } catch (err) {
     next(err);
@@ -33,6 +34,42 @@ export async function releaseReservation(req: Request, res: Response, next: Next
   try {
     const input = releaseReservationSchema.parse(req.body);
     await numbersService.releaseReservation(req.params.raffleId as string, input.session_id, input.numbers);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getPendingPurchases(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as AuthRequest).userId;
+    const purchases = await numbersService.getPendingPurchases(req.params.raffleId as string, userId);
+    res.json({ purchases });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function confirmPurchase(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as AuthRequest).userId;
+    const input = confirmPurchaseSchema.parse(req.body ?? {});
+    await numbersService.confirmPurchase(
+      req.params.raffleId as string,
+      req.params.purchaseId as string,
+      userId,
+      input
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function rejectPurchase(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as AuthRequest).userId;
+    await numbersService.rejectPurchase(req.params.raffleId as string, req.params.purchaseId as string, userId);
     res.json({ ok: true });
   } catch (err) {
     next(err);
