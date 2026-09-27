@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as usersService from './users.service';
-import { updateProfileSchema } from './users.schemas';
+import { updateProfileSchema, changeUsernameSchema } from './users.schemas';
 import type { AuthRequest } from '../../middleware/auth';
 
 export async function getPublicProfile(req: Request, res: Response, next: NextFunction) {
@@ -15,6 +15,17 @@ export async function getPublicProfile(req: Request, res: Response, next: NextFu
 export async function getPublicRaffles(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await usersService.getPublicRaffles(req.params.username as string);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changeUsername(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as AuthRequest).userId;
+    const input = changeUsernameSchema.parse(req.body);
+    const result = await usersService.changeUsername(userId, input);
     res.json(result);
   } catch (err) {
     next(err);

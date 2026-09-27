@@ -14,6 +14,10 @@ function hashToken(token: string): string {
 }
 
 export async function register(input: RegisterInput) {
+  if (!env.REGISTRATION_OPEN) {
+    throw new AppError('El registro de cuentas nuevas está cerrado por ahora', 403);
+  }
+
   const existing = await db
     .selectFrom('users')
     .select('id')
@@ -25,6 +29,14 @@ export async function register(input: RegisterInput) {
   if (existing) {
     throw new AppError('Email o nombre de usuario ya en uso', 409);
   }
+
+  // Un nombre que otro usuario usó antes sigue redirigiendo a él: no se puede tomar.
+  const oldName = await db
+    .selectFrom('username_history')
+    .select('id')
+    .where('username', '=', input.username)
+    .executeTakeFirst();
+  if (oldName) throw new AppError('Email o nombre de usuario ya en uso', 409);
 
   const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
@@ -139,6 +151,7 @@ export async function getUserById(userId: string) {
       'transfer_cuit',
       'transfer_bank',
       'profile_public',
+      'username_changed_at',
       'created_at',
     ])
     .where('id', '=', userId)
