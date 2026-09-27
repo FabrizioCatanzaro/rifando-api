@@ -46,7 +46,7 @@ src/
   scripts/
 ```
 
-Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`, `admin`, `telegram`, `upload`.
+Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`, `admin`, `telegram`, `upload`, `payments`.
 
 ## Rutas principales
 
@@ -64,6 +64,8 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 | `/api/admin` | admin | Solo `ADMIN_USER_ID`. Aprobación de pagos de sorteo. |
 | `/api/telegram` | telegram | Vinculación y webhook. |
 | `/api/upload` | upload | `/image` requiere auth. `/comprobante` es público. |
+| `/api/payments` | payments | Vinculación de Mercado Pago, historial y webhook. |
+| `/api/raffles/:raffleId/purchases/:purchaseId/mercadopago` | payments | Checkout público del comprador. |
 
 ## Convenciones
 
@@ -98,7 +100,7 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 ## Base de datos y migraciones
 
 - Crea migraciones como SQL numerado: `src/db/migrations/NNN_descripcion.sql`.
-- Usa el siguiente número libre. Última migración: `016_add_username_history.sql`.
+- Usa el siguiente número libre. Última migración: `017_add_mercadopago.sql`.
 - Escribe migraciones idempotentes: `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`.
 - No edites una migración ya aplicada. Crea una nueva.
 - Actualiza `src/types/db.ts` a mano en cada migración. Kysely no genera tipos.
@@ -114,7 +116,7 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 - La app termina el proceso si una variable obligatoria falta.
 - No leas `.env`. Contiene secretos.
 
-Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `NODE_ENV`, `PORT`, `FRONTEND_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_USER_ID`, `REGISTRATION_OPEN`, `DRAW_SERVICE_PRICE`, `DRAW_SERVICE_ALIAS`, `DRAW_SERVICE_HOLDER`, `DRAW_SERVICE_BANK`.
+Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `NODE_ENV`, `PORT`, `FRONTEND_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_USER_ID`, `REGISTRATION_OPEN`, `DRAW_SERVICE_PRICE`, `DRAW_SERVICE_ALIAS`, `DRAW_SERVICE_HOLDER`, `DRAW_SERVICE_BANK`, `API_PUBLIC_URL`, `MERCADOPAGO_CLIENT_ID`, `MERCADOPAGO_CLIENT_SECRET`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_TOKEN_KEY`.
 
 ## Notificaciones
 
@@ -139,11 +141,26 @@ Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `
 - Para buscar un usuario por nombre en rutas públicas usa `findUserIdByUsername` (acepta nombres anteriores). Devolvé siempre el nombre actual para que el frontend redirija.
 - `PATCH /api/users/username`: cambio de nombre, uno cada 30 días (`USERNAME_CHANGE_COOLDOWN_DAYS`).
 
-## Integración futura: Mercado Pago
+## Mercado Pago
 
-- Crea un módulo nuevo `modules/payments/` con la convención de cuatro archivos.
-- Un pago de Mercado Pago corresponde a una fila de `purchases` (`external_reference` = `purchase.id`).
-- Guarda los tokens OAuth de cada rifante cifrados.
-- Valida la firma de cada webhook.
-- Haz el webhook idempotente por `payment_id`.
+- Cada rifante vincula su cuenta por OAuth. Cobra directo en ella. La comisión la absorbe el rifante.
+- Una rifa cobra con Mercado Pago si `confirmation_method = 'mercadopago'`. Exige cuenta vinculada y precio mayor a cero.
+- Tokens OAuth cifrados con AES-256-GCM (`utils/crypto.ts`, clave `MERCADOPAGO_TOKEN_KEY`). Cambiar la clave invalida las cuentas vinculadas.
+- Cliente HTTP en `utils/mercadopago.ts`. Sin SDK.
+- Una compra (`purchases`) es un pago: `external_reference = purchase.id`.
+- Flujo del comprador: reserva (30 min) → `POST .../mercadopago` crea la preferencia → paga en Mercado Pago → vuelve a la rifa con `?mp_purchase=` → `GET .../mercadopago?session_id=&payment_id=` sincroniza.
+- La preferencia vence 3 minutos antes que la reserva. Excluye efectivo y cajero. `binary_mode` activo.
+- Webhook: `POST /api/payments/mp/webhook`. Montado antes del rate limiter. Valida `x-signature` con `MERCADOPAGO_WEBHOOK_SECRET`. Responde 5xx solo si conviene que Mercado Pago reintente.
+- Nunca confíes en el body del webhook: el pago se lee siempre de la API con el token del rifante.
+- `applyPayment` es idempotente: bloquea la compra con `FOR UPDATE` y guarda `outcome` en `mercadopago_payments`.
+- La confirmación usa `markPurchaseSold` de `numbers.service`, la misma que la confirmación manual.
+- `outcome`: `confirmed`, `late` (compra vencida o cancelada, o rifa no activa), `amount_mismatch`, `duplicate` (compra ya confirmada). Todos menos `confirmed` avisan al rifante para resolver a mano.
+- Reembolso o contracargo de un pago `confirmed`: se avisa al rifante. Los números no se liberan solos.
+- `mp_updated_at` descarta notificaciones que llegan desordenadas.
+- Errores permanentes del webhook (cuenta desvinculada, acceso revocado, pago ajeno) responden 200 y se loguean. Solo los transitorios responden 5xx.
+- Una rifa con Mercado Pago no acepta `comprobante_url` al reservar: la reserva no vencería.
+- Con Mercado Pago no se avisa al reservar. Se avisa al acreditarse el pago (`notifyMercadoPagoPayment`).
+- No se puede desvincular con rifas en borrador o activas que cobran con Mercado Pago, ni con compradores pagando.
+- Pruebas: vinculá un vendedor de prueba y pagá con un comprador de prueba, en el checkout normal (`init_point`). No uses `sandbox_init_point` ni `test_token`: es el esquema viejo.
+- `notification_url` y `auto_return` requieren https. En desarrollo usá un túnel (ngrok) en `API_PUBLIC_URL` o sincronizá con `payment_id`.
 - Consulta el MCP de Mercado Pago para documentación y usuarios de prueba.
