@@ -12,6 +12,8 @@ export interface Database {
   raffle_draw_payments: RaffleDrawPaymentsTable;
   purchases: PurchasesTable;
   username_history: UsernameHistoryTable;
+  mercadopago_accounts: MercadopagoAccountsTable;
+  mercadopago_payments: MercadopagoPaymentsTable;
 }
 
 export interface UsernameHistoryTable {
@@ -38,10 +40,14 @@ export interface UsersTable {
   telegram_link_token: string | null;
   telegram_link_expires_at: Date | null;
   username_changed_at: Date | null;
+  mp_oauth_state: string | null;
+  mp_oauth_state_expires_at: Date | null;
   profile_public: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
+
+export type ConfirmationMethod = 'whatsapp' | 'upload' | 'mercadopago';
 
 export interface RafflesTable {
   id: Generated<string>;
@@ -60,7 +66,7 @@ export interface RafflesTable {
   prize_assignment_mode: 'automatic' | 'sequential_choice';
   winner_number: number | null;
   rich_content: string | null;
-  confirmation_method: Generated<'whatsapp' | 'upload'>;
+  confirmation_method: Generated<ConfirmationMethod>;
   draw_unlocked: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -106,6 +112,47 @@ export interface PurchasesTable {
   /** null = no vence (compra con comprobante) */
   expires_at: Date | null;
   ip: string | null;
+  mp_preference_id: string | null;
+  mp_init_point: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface MercadopagoAccountsTable {
+  user_id: string;
+  mp_user_id: number;
+  /** Cifrado con AES-256-GCM (utils/crypto.ts). */
+  access_token: string;
+  /** Cifrado con AES-256-GCM (utils/crypto.ts). */
+  refresh_token: string;
+  public_key: string | null;
+  live_mode: Generated<boolean>;
+  expires_at: Date;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export type MercadopagoPaymentOutcome = 'confirmed' | 'late' | 'amount_mismatch' | 'duplicate';
+
+export interface MercadopagoPaymentsTable {
+  id: Generated<string>;
+  mp_payment_id: number;
+  purchase_id: string;
+  raffle_id: string;
+  user_id: string;
+  /** Estado de Mercado Pago tal cual (approved, rejected, refunded...). */
+  status: string;
+  status_detail: string | null;
+  amount: number;
+  fee_amount: number | null;
+  net_amount: number | null;
+  payment_method_id: string | null;
+  payer_email: string | null;
+  live_mode: Generated<boolean>;
+  outcome: MercadopagoPaymentOutcome | null;
+  date_approved: Date | null;
+  /** date_last_updated de Mercado Pago. */
+  mp_updated_at: Date | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }

@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely';
 import { v2 as cloudinary } from 'cloudinary';
 import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
+import { hasMercadoPagoAccount } from '../../utils/mercadopago';
 import { generateReadableSlug, generateSlug } from '../../utils/slug';
 import { findUserIdByUsername } from '../users/users.service';
 import { env } from '../../config/env';
@@ -185,7 +186,21 @@ async function uniqueSlug(userId: string, title: string | null): Promise<string>
   return generateSlug();
 }
 
+/** Cobrar con Mercado Pago exige cuenta vinculada y un precio mayor a cero. */
+async function assertMercadoPagoUsable(userId: string, pricePerNumber: number) {
+  if (!(await hasMercadoPagoAccount(userId))) {
+    throw new AppError('Vinculá tu cuenta de Mercado Pago en Mis datos para cobrar con Mercado Pago', 400);
+  }
+  if (pricePerNumber <= 0) {
+    throw new AppError('Para cobrar con Mercado Pago el precio por número debe ser mayor a cero', 400);
+  }
+}
+
 export async function createRaffle(userId: string, input: CreateRaffleInput) {
+  if (input.confirmation_method === 'mercadopago') {
+    await assertMercadoPagoUsable(userId, input.price_per_number);
+  }
+
   const slug = await uniqueSlug(userId, input.visibility === 'public' ? input.title : null);
 
   const raffle = await db
@@ -238,6 +253,13 @@ export async function updateRaffle(raffleId: string, userId: string, input: Upda
   if (!raffle) throw new AppError('Rifa no encontrada', 404);
   if (raffle.user_id !== userId) throw new AppError('Sin permiso', 403);
   if (raffle.status === 'finished') throw new AppError('No se puede editar una rifa finalizada', 400);
+
+  if ((input.confirmation_method ?? raffle.confirmation_method) === 'mercadopago') {
+    const methodOrPriceChanges = input.confirmation_method !== undefined || input.price_per_number !== undefined;
+    if (methodOrPriceChanges) {
+      await assertMercadoPagoUsable(userId, input.price_per_number ?? raffle.price_per_number);
+    }
+  }
 
   const touchesLocked = LOCKED_FIELDS.some((field) => {
     if (input[field] === undefined) return false;

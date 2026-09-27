@@ -26,6 +26,18 @@ const envSchema = z.object({
   DRAW_SERVICE_ALIAS: optional(z.string().min(1)),
   DRAW_SERVICE_HOLDER: optional(z.string().min(1)),
   DRAW_SERVICE_BANK: optional(z.string().min(1)),
+  // Mercado Pago: cada rifante vincula su cuenta por OAuth y cobra directo en ella.
+  // URL pública de esta API (https). Se usa en el redirect de OAuth y en el webhook.
+  API_PUBLIC_URL: optional(z.string().url()),
+  MERCADOPAGO_CLIENT_ID: optional(z.string().min(1)),
+  MERCADOPAGO_CLIENT_SECRET: optional(z.string().min(1)),
+  // Clave secreta de Webhooks (Tus integraciones → Webhooks). Valida x-signature.
+  MERCADOPAGO_WEBHOOK_SECRET: optional(z.string().min(1)),
+  // 32 bytes en hex (64 caracteres). Cifra los tokens OAuth en la base.
+  // Generar con: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  MERCADOPAGO_TOKEN_KEY: optional(
+    z.string().regex(/^[0-9a-fA-F]{64}$/, 'Debe tener 64 caracteres hexadecimales')
+  ),
   // Registro de cuentas nuevas. Por defecto cerrado (acceso anticipado).
   REGISTRATION_OPEN: z
     .preprocess((v) => (v === '' ? undefined : v), z.enum(['true', 'false']).default('false'))

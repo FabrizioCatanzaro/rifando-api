@@ -17,6 +17,8 @@ import uploadRoutes from './modules/upload/upload.routes';
 import drawRoutes from './modules/draw/draw.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import telegramRoutes from './modules/telegram/telegram.routes';
+import paymentsRoutes, { checkoutRouter } from './modules/payments/payments.routes';
+import * as paymentsController from './modules/payments/payments.controller';
 import * as rafflesController from './modules/raffles/raffles.controller';
 
 const app = express();
@@ -32,6 +34,10 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+
+// Webhook de Mercado Pago antes del rate limiter: llega desde pocas IPs y reintenta.
+app.post('/api/payments/mp/webhook', paymentsController.webhook);
+
 app.use(generalLimiter);
 
 // Health check
@@ -48,9 +54,11 @@ app.use('/api/raffles/:raffleId/numbers', numbersRoutes);
 app.use('/api/raffles/:raffleId/prizes', prizesRoutes);
 app.use('/api/raffles/:raffleId/promotions', promotionsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/raffles/:raffleId/purchases/:purchaseId/mercadopago', checkoutRouter);
 app.use('/api/raffles/:raffleId', drawRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/telegram', telegramRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 app.use(errorHandler);
 

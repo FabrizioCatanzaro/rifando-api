@@ -25,7 +25,7 @@ const baseRaffleSchema = z.object({
     .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), 'Fecha inválida'),
   prize_assignment_mode: z.enum(['automatic', 'sequential_choice']).default('automatic'),
   rich_content: z.record(z.unknown()).optional(),
-  confirmation_method: z.enum(['whatsapp', 'upload']).default('whatsapp'),
+  confirmation_method: z.enum(['whatsapp', 'upload', 'mercadopago']).default('whatsapp'),
 });
 
 // Una rifa siempre nace en borrador. Se publica con PATCH { status: 'active' }.

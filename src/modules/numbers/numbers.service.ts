@@ -1,5 +1,8 @@
+import type { Transaction } from 'kysely';
 import { db } from '../../db/client';
+import type { Database, Purchase } from '../../types/db';
 import { assertOwnComprobante } from '../../utils/comprobante';
+import { hasMercadoPagoAccount } from '../../utils/mercadopago';
 import { AppError } from '../../middleware/errorHandler';
 import { notifyReservation } from '../../utils/notifier';
 import { maskBuyerName } from '../../utils/names';
@@ -106,18 +109,25 @@ export async function getNumbers(raffleId: string, viewerUserId?: string) {
 export async function reserveNumbers(raffleId: string, input: ReserveInput, ip?: string) {
   const raffle = await db
     .selectFrom('raffles')
-    .select(['id', 'status', 'total_numbers', 'price_per_number', 'confirmation_method'])
+    .select(['id', 'user_id', 'status', 'total_numbers', 'price_per_number', 'confirmation_method'])
     .where('id', '=', raffleId)
     .executeTakeFirst();
 
   if (!raffle) throw new AppError('Rifa no encontrada', 404);
   if (raffle.status !== 'active') throw new AppError('La rifa no está activa', 400);
+  if (raffle.confirmation_method === 'mercadopago' && !(await hasMercadoPagoAccount(raffle.user_id))) {
+    throw new AppError('El organizador todavía no puede cobrar con Mercado Pago', 409);
+  }
 
   const numbers = [...new Set(input.numbers)].sort((a, b) => a - b);
   for (const n of numbers) {
     if (n < 0 || n >= raffle.total_numbers) throw new AppError(`Número ${n} fuera de rango`, 400);
   }
 
+  // Con comprobante la reserva no vence: en Mercado Pago bloquearía números sin pagar.
+  if (raffle.confirmation_method === 'mercadopago' && input.comprobante_url) {
+    throw new AppError('Esta rifa se paga con Mercado Pago. No adjuntes comprobante.', 400);
+  }
   if (raffle.confirmation_method === 'upload' && !input.comprobante_url) {
     throw new AppError('Adjuntá el comprobante de transferencia', 400);
   }
@@ -203,7 +213,10 @@ export async function reserveNumbers(raffleId: string, input: ReserveInput, ip?:
     return { reserved: [], failed: result.failed, purchase_id: null, total: 0, expires_at: null };
   }
 
-  notifyReservation(result.purchaseId).catch(() => {});
+  // Con Mercado Pago el aviso sale cuando se acredita el pago (payments.service).
+  if (raffle.confirmation_method !== 'mercadopago') {
+    notifyReservation(result.purchaseId).catch(() => {});
+  }
 
   return {
     reserved: numbers,
@@ -306,6 +319,60 @@ async function getPendingPurchaseForOwner(raffleId: string, purchaseId: string, 
   return purchase;
 }
 
+/**
+ * Pasa a `sold` los números reservados de una compra, con el monto real repartido,
+ * y marca la compra como `confirmed`. Corre dentro de la transacción del llamador.
+ * Devuelve los números vendidos. Si la compra ya no tiene reservas, no toca nada y devuelve [].
+ * La usan la confirmación manual del rifante y el webhook de Mercado Pago.
+ */
+export async function markPurchaseSold(
+  trx: Transaction<Database>,
+  raffleId: string,
+  purchase: Pick<Purchase, 'id' | 'quantity' | 'total'>,
+  buyerName: string
+): Promise<number[]> {
+  const reservations = await trx
+    .selectFrom('number_reservations')
+    .select(['number'])
+    .where('purchase_id', '=', purchase.id)
+    .orderBy('number', 'asc')
+    .execute();
+
+  if (reservations.length === 0) return [];
+
+  // Si el rifante liberó números sueltos, el total se prorratea sobre los que quedan.
+  const total =
+    reservations.length === purchase.quantity
+      ? purchase.total
+      : roundMoney((purchase.total / purchase.quantity) * reservations.length);
+  const amounts = splitAmount(total, reservations.length);
+  const soldAt = new Date();
+
+  for (let i = 0; i < reservations.length; i++) {
+    await trx
+      .updateTable('raffle_numbers')
+      .set({
+        status: 'sold',
+        buyer_name: buyerName,
+        sold_at: soldAt,
+        purchase_id: purchase.id,
+        sale_amount: amounts[i],
+      })
+      .where('raffle_id', '=', raffleId)
+      .where('number', '=', reservations[i].number)
+      .execute();
+  }
+
+  await trx.deleteFrom('number_reservations').where('purchase_id', '=', purchase.id).execute();
+  await trx
+    .updateTable('purchases')
+    .set({ status: 'confirmed', buyer_name: buyerName, updated_at: soldAt })
+    .where('id', '=', purchase.id)
+    .execute();
+
+  return reservations.map((r) => r.number);
+}
+
 /** Confirma una compra: sus números pasan a `sold` con el monto real repartido. */
 export async function confirmPurchase(
   raffleId: string,
@@ -317,44 +384,8 @@ export async function confirmPurchase(
   const buyerName = input.buyer_name ?? purchase.buyer_name;
 
   await db.transaction().execute(async (trx) => {
-    const reservations = await trx
-      .selectFrom('number_reservations')
-      .select(['number'])
-      .where('purchase_id', '=', purchaseId)
-      .orderBy('number', 'asc')
-      .execute();
-
-    if (reservations.length === 0) throw new AppError('La reserva ya no existe', 409);
-
-    // Si el rifante liberó números sueltos, el total se prorratea sobre los que quedan.
-    const total =
-      reservations.length === purchase.quantity
-        ? purchase.total
-        : roundMoney((purchase.total / purchase.quantity) * reservations.length);
-    const amounts = splitAmount(total, reservations.length);
-    const soldAt = new Date();
-
-    for (let i = 0; i < reservations.length; i++) {
-      await trx
-        .updateTable('raffle_numbers')
-        .set({
-          status: 'sold',
-          buyer_name: buyerName,
-          sold_at: soldAt,
-          purchase_id: purchaseId,
-          sale_amount: amounts[i],
-        })
-        .where('raffle_id', '=', raffleId)
-        .where('number', '=', reservations[i].number)
-        .execute();
-    }
-
-    await trx.deleteFrom('number_reservations').where('purchase_id', '=', purchaseId).execute();
-    await trx
-      .updateTable('purchases')
-      .set({ status: 'confirmed', buyer_name: buyerName, updated_at: soldAt })
-      .where('id', '=', purchaseId)
-      .execute();
+    const sold = await markPurchaseSold(trx, raffleId, purchase, buyerName);
+    if (sold.length === 0) throw new AppError('La reserva ya no existe', 409);
   });
 }
 
