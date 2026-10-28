@@ -20,6 +20,8 @@ export const updateProfileSchema = z
     display_name: z.string().trim().min(1, 'El nombre completo es obligatorio').max(100).optional(),
     whatsapp_number: z.string().max(20).optional(),
     profile_public: z.boolean().optional(),
+    // Foto de perfil subida con /api/upload/image. null = se quita.
+    avatar_url: z.string().url().max(500).nullable().optional(),
     transfer_alias: optionalText(30),
     transfer_holder: optionalText(150),
     transfer_cuit: optionalText(20),

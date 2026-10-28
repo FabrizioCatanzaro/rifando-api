@@ -1,3 +1,4 @@
+import { isOwnCloudinaryUrl } from '../../utils/comprobante';
 import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import type { UpdateProfileInput, ChangeUsernameInput } from './users.schemas';
@@ -155,6 +156,10 @@ export async function getPublicRaffles(username: string) {
 }
 
 export async function updateProfile(userId: string, input: UpdateProfileInput) {
+  if (input.avatar_url && !isOwnCloudinaryUrl(input.avatar_url)) {
+    throw new AppError('Foto de perfil inválida', 400);
+  }
+
   const updated = await db
     .updateTable('users')
     .set({
