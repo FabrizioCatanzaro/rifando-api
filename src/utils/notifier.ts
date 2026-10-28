@@ -6,6 +6,7 @@ import {
   notifyReservationEmail,
   type MercadoPagoPaymentNotice,
   type ReservationEmailData,
+  formatTtl,
 } from './mailer';
 
 const priceFormatter = new Intl.NumberFormat('es-AR', {
@@ -36,7 +37,7 @@ async function notifyReservationTelegram(chatId: string, data: ReservationEmailD
     text += `\n\n📎 <a href="${escapeHtml(data.comprobanteUrl)}">Ver comprobante</a>`;
     text += `\nLa reserva no vence hasta que la confirmes o rechaces.`;
   } else {
-    text += `\n\n⏱️ La reserva vence en 30 minutos si no la confirmás.`;
+    text += `\n\n⏱️ La reserva vence en ${formatTtl(data.ttlMinutes)} si no la confirmás.`;
   }
 
   await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -59,6 +60,7 @@ export async function notifyReservation(purchaseId: string) {
       'purchases.comprobante_url',
       'raffles.id as raffle_id',
       'raffles.title',
+      'raffles.reservation_ttl_minutes',
       'users.email',
       'users.telegram_chat_id',
     ])
@@ -82,6 +84,7 @@ export async function notifyReservation(purchaseId: string) {
     total: row.total,
     promotionLabel: row.promotion_label,
     comprobanteUrl: row.comprobante_url,
+    ttlMinutes: row.reservation_ttl_minutes,
   };
 
   const tasks: Promise<unknown>[] = [notifyReservationEmail(row.email, data)];

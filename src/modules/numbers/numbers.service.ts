@@ -16,7 +16,7 @@ import type {
   ConfirmPurchaseInput,
 } from './numbers.schemas';
 
-export const RESERVATION_TTL_MS = 30 * 60 * 1000; // 30 minutos (sin comprobante)
+export const RESERVATION_TTL_MS = 30 * 60 * 1000; // 30 minutos: reservas con Mercado Pago
 
 /**
  * Libera reservas vencidas y marca sus compras como `expired`.
@@ -109,7 +109,7 @@ export async function getNumbers(raffleId: string, viewerUserId?: string) {
 export async function reserveNumbers(raffleId: string, input: ReserveInput, ip?: string) {
   const raffle = await db
     .selectFrom('raffles')
-    .select(['id', 'user_id', 'status', 'total_numbers', 'price_per_number', 'confirmation_method'])
+    .select(['id', 'user_id', 'status', 'total_numbers', 'price_per_number', 'confirmation_method', 'reservation_ttl_minutes'])
     .where('id', '=', raffleId)
     .executeTakeFirst();
 
@@ -145,7 +145,11 @@ export async function reserveNumbers(raffleId: string, input: ReserveInput, ip?:
   const { total, promotionLabel } = calculatePrice(numbers.length, raffle.price_per_number, promotions);
   const comprobanteUrl = input.comprobante_url ?? null;
   // Con comprobante la reserva no vence: espera la decisión del rifante.
-  const expiresAt = comprobanteUrl ? null : new Date(Date.now() + RESERVATION_TTL_MS);
+  // Con Mercado Pago la reserva dura siempre 30 minutos (la preferencia vence antes).
+  // Sin Mercado Pago dura lo que eligió el rifante.
+  const ttlMs =
+    raffle.confirmation_method === 'mercadopago' ? RESERVATION_TTL_MS : raffle.reservation_ttl_minutes * 60 * 1000;
+  const expiresAt = comprobanteUrl ? null : new Date(Date.now() + ttlMs);
 
   const result = await db.transaction().execute(async (trx) => {
     const available = await trx

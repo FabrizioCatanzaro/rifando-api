@@ -18,6 +18,15 @@ export interface ReservationEmailData {
   total: number;
   promotionLabel: string | null;
   comprobanteUrl: string | null;
+  /** Minutos que dura la reserva sin comprobante. */
+  ttlMinutes: number;
+}
+
+/** "30 minutos", "1 hora", "6 horas", "24 horas". */
+export function formatTtl(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutos`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? '1 hora' : `${hours} horas`;
 }
 
 const priceFormatter = new Intl.NumberFormat('es-AR', {
@@ -36,7 +45,7 @@ export async function notifyReservationEmail(ownerEmail: string, data: Reservati
   const promo = data.promotionLabel ? ` (${escapeHtml(data.promotionLabel)})` : '';
   const comprobante = data.comprobanteUrl
     ? `<p><a href="${escapeHtml(data.comprobanteUrl)}">Ver comprobante adjunto</a>. La reserva no vence hasta que la confirmes o rechaces.</p>`
-    : `<p style="color:#555">La reserva vence en 30 minutos si no la confirmás.</p>`;
+    : `<p style="color:#555">La reserva vence en ${formatTtl(data.ttlMinutes)} si no la confirmás.</p>`;
 
   await client.emails.send({
     from,
