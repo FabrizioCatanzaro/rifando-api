@@ -46,7 +46,7 @@ src/
   scripts/
 ```
 
-Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`, `admin`, `telegram`, `upload`, `payments`.
+Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`, `fees`, `admin`, `telegram`, `upload`, `payments`.
 
 ## Rutas principales
 
@@ -56,7 +56,10 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 | `/api/auth` | auth | Registro, login, refresh, logout. |
 | `/api/users` | users | Perfil público y `PATCH /profile`. |
 | `GET /api/users/:username/raffles/:slug` | raffles | Rifa pública. `?code=` para privadas. |
+| `GET /api/raffles/explore` | raffles | Público. Rifas activas para la home + estadísticas. |
 | `/api/raffles` | raffles | CRUD del rifante y `POST /:raffleId/finish`. |
+| `GET /api/fees` | fees | Público. `APP_FEE_PERCENT` y `MERCADOPAGO_FEE_PERCENT`. |
+| `/api/raffles/:raffleId/fee-payment` | fees | Comisión de ventas manuales: estado y comprobante. |
 | `/api/raffles/:raffleId/numbers` | numbers | Grilla, reservas, compras (`/purchases`), venta, liberación, compradores. |
 | `/api/raffles/:raffleId/prizes` | prizes | Premios. |
 | `/api/raffles/:raffleId/promotions` | promotions | Promociones. |
@@ -100,7 +103,7 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 ## Base de datos y migraciones
 
 - Crea migraciones como SQL numerado: `src/db/migrations/NNN_descripcion.sql`.
-- Usa el siguiente número libre. Última migración: `017_add_mercadopago.sql`.
+- Usa el siguiente número libre. Última migración: `018_add_fees_and_reservation_ttl.sql`.
 - Escribe migraciones idempotentes: `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`.
 - No edites una migración ya aplicada. Crea una nueva.
 - Actualiza `src/types/db.ts` a mano en cada migración. Kysely no genera tipos.
@@ -116,7 +119,7 @@ Módulos: `auth`, `users`, `raffles`, `numbers`, `prizes`, `promotions`, `draw`,
 - La app termina el proceso si una variable obligatoria falta.
 - No leas `.env`. Contiene secretos.
 
-Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `NODE_ENV`, `PORT`, `FRONTEND_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_USER_ID`, `REGISTRATION_OPEN`, `DRAW_SERVICE_PRICE`, `DRAW_SERVICE_ALIAS`, `DRAW_SERVICE_HOLDER`, `DRAW_SERVICE_BANK`, `API_PUBLIC_URL`, `MERCADOPAGO_CLIENT_ID`, `MERCADOPAGO_CLIENT_SECRET`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_TOKEN_KEY`.
+Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `NODE_ENV`, `PORT`, `FRONTEND_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_USER_ID`, `REGISTRATION_OPEN`, `DRAW_SERVICE_PRICE`, `DRAW_SERVICE_ALIAS`, `DRAW_SERVICE_HOLDER`, `DRAW_SERVICE_BANK`, `API_PUBLIC_URL`, `MERCADOPAGO_CLIENT_ID`, `MERCADOPAGO_CLIENT_SECRET`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_TOKEN_KEY`, `APP_FEE_PERCENT`, `MERCADOPAGO_FEE_PERCENT`.
 
 ## Notificaciones
 
@@ -164,3 +167,17 @@ Variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDINARY_*`, `
 - Pruebas: vinculá un vendedor de prueba y pagá con un comprador de prueba, en el checkout normal (`init_point`). No uses `sandbox_init_point` ni `test_token`: es el esquema viejo.
 - `notification_url` y `auto_return` requieren https. En desarrollo usá un túnel (ngrok) en `API_PUBLIC_URL` o sincronizá con `payment_id`.
 - Consulta el MCP de Mercado Pago para documentación y usuarios de prueba.
+
+## Comisiones y tiempo de reserva (Sprint 2)
+
+- `APP_FEE_PERCENT`: comisión de Rifando. Se copia a `raffles.app_fee_percent` al crear la rifa. Rifas anteriores: 0.
+- `MERCADOPAGO_FEE_PERCENT`: comisión estimada de Mercado Pago con IVA. Solo alimenta la calculadora del frontend.
+- Con Mercado Pago: la preferencia lleva `marketplace_fee` = total × `app_fee_percent`. Mercado Pago la retiene en cada pago.
+- `mercadopago_payments.marketplace_fee` guarda el `application_fee` de `fee_details`. `fee_amount` guarda el resto.
+- Sin Mercado Pago: `fees.service` → `getFeeStatus` calcula la comisión de las ventas manuales.
+  - Base manual = suma de `sale_amount` vendidos − compras confirmadas con pago de Mercado Pago aprobado.
+  - El rifante transfiere a la cuenta `DRAW_SERVICE_*` y sube el comprobante (`raffle_fee_payments`). El admin aprueba.
+  - `assertFeesSettled` bloquea `finishRaffle` y `executeDraw` si queda comisión sin pagar.
+- `raffles.target_amount`: meta de ganancia que cargó el rifante. No se expone en la rifa pública.
+- `raffles.reservation_ttl_minutes` (30, 60, 360, 1440): duración de la reserva sin comprobante. Con Mercado Pago siempre 30 min (`RESERVATION_TTL_MS`).
+- `users.avatar_url`: foto de perfil. `PATCH /api/users/profile` acepta solo URLs del Cloudinary propio.
