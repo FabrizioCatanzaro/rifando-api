@@ -18,6 +18,7 @@ import drawRoutes from './modules/draw/draw.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import telegramRoutes from './modules/telegram/telegram.routes';
 import paymentsRoutes, { checkoutRouter } from './modules/payments/payments.routes';
+import feesRoutes, { feesConfigRouter } from './modules/fees/fees.routes';
 import * as paymentsController from './modules/payments/payments.controller';
 import * as rafflesController from './modules/raffles/raffles.controller';
 
@@ -56,6 +57,8 @@ app.use('/api/raffles/:raffleId/promotions', promotionsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/raffles/:raffleId/purchases/:purchaseId/mercadopago', checkoutRouter);
 app.use('/api/raffles/:raffleId', drawRoutes);
+app.use('/api/raffles/:raffleId', feesRoutes);
+app.use('/api/fees', feesConfigRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/payments', paymentsRoutes);

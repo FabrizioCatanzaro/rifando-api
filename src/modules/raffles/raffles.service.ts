@@ -6,6 +6,8 @@ import { AppError } from '../../middleware/errorHandler';
 import { hasMercadoPagoAccount } from '../../utils/mercadopago';
 import { generateReadableSlug, generateSlug } from '../../utils/slug';
 import { findUserIdByUsername } from '../users/users.service';
+import { assertFeesSettled } from '../fees/fees.service';
+import { getFeeConfig } from '../../utils/fees';
 import { env } from '../../config/env';
 import type { Database } from '../../types/db';
 import type { CreateRaffleInput, UpdateRaffleInput, FinishRaffleInput } from './raffles.schemas';
@@ -102,7 +104,7 @@ export async function getRaffleBySlug(username: string, slug: string, accessCode
   const user = ownerId
     ? await db
         .selectFrom('users')
-        .select(['id', 'username', 'display_name', 'whatsapp_number', 'transfer_alias', 'transfer_holder', 'transfer_cuit', 'transfer_bank'])
+        .select(['id', 'username', 'display_name', 'avatar_url', 'whatsapp_number', 'transfer_alias', 'transfer_holder', 'transfer_cuit', 'transfer_bank'])
         .where('id', '=', ownerId)
         .executeTakeFirst()
     : undefined;
@@ -168,7 +170,9 @@ export async function getRaffleBySlug(username: string, slug: string, accessCode
     }
   }
 
-  return { raffle, owner: user, prizes: enrichedPrizes, promotions };
+  // La meta y la comisión son datos internos del rifante.
+  const { target_amount: _target, app_fee_percent: _fee, ...publicRaffle } = raffle;
+  return { raffle: publicRaffle, owner: user, prizes: enrichedPrizes, promotions };
 }
 
 /** Slug único por usuario. Pública: legible desde el título. Privada: aleatorio. */
@@ -222,6 +226,9 @@ export async function createRaffle(userId: string, input: CreateRaffleInput) {
       prize_assignment_mode: input.prize_assignment_mode,
       rich_content: input.rich_content ? JSON.stringify(input.rich_content) : null,
       confirmation_method: input.confirmation_method,
+      reservation_ttl_minutes: input.reservation_ttl_minutes,
+      target_amount: input.target_amount ?? null,
+      app_fee_percent: getFeeConfig().app_fee_percent,
     })
     .returningAll()
     .executeTakeFirstOrThrow();
@@ -387,6 +394,8 @@ export async function finishRaffle(raffleId: string, userId: string, input: Fini
   if (!raffle) throw new AppError('Rifa no encontrada', 404);
   if (raffle.user_id !== userId) throw new AppError('Sin permiso', 403);
 
+  await assertFeesSettled(raffleId);
+
   if (input.winner_number != null) {
     if (input.winner_number < 0 || input.winner_number >= raffle.total_numbers) {
       throw new AppError('Número ganador fuera de rango', 400);
@@ -401,4 +410,121 @@ export async function finishRaffle(raffleId: string, userId: string, input: Fini
     .executeTakeFirstOrThrow();
 
   return updated;
+}
+
+const EXPLORE_LIMIT = 12;
+
+/**
+ * Rifas activas y públicas para la home, más estadísticas generales de la app.
+ * Solo incluye rifantes con perfil público. Ordena por porcentaje vendido.
+ */
+export async function getExplore() {
+  const raffles = await db
+    .selectFrom('raffles')
+    .innerJoin('users', 'users.id', 'raffles.user_id')
+    .select([
+      'raffles.id',
+      'raffles.slug',
+      'raffles.title',
+      'raffles.total_numbers',
+      'raffles.price_per_number',
+      'raffles.cover_icon',
+      'raffles.draw_mode',
+      'raffles.draw_date',
+      'raffles.confirmation_method',
+      'raffles.created_at',
+      'users.username',
+      'users.display_name',
+      'users.avatar_url',
+    ])
+    .where('raffles.status', '=', 'active')
+    .where('raffles.visibility', '=', 'public')
+    .where('users.profile_public', '=', true)
+    .orderBy('raffles.created_at', 'desc')
+    .limit(60)
+    .execute();
+
+  const ids = raffles.map((r) => r.id);
+
+  const [soldRows, prizeRows, totals] = await Promise.all([
+    ids.length
+      ? db
+          .selectFrom('raffle_numbers')
+          .select(['raffle_id', db.fn.count<number>('id').as('sold')])
+          .where('raffle_id', 'in', ids)
+          .where('status', '=', 'sold')
+          .groupBy('raffle_id')
+          .execute()
+      : Promise.resolve([]),
+    ids.length
+      ? db
+          .selectFrom('prizes')
+          .select(['raffle_id', 'title', 'image_url', 'position'])
+          .where('raffle_id', 'in', ids)
+          .orderBy('position', 'asc')
+          .execute()
+      : Promise.resolve([]),
+    db
+      .selectNoFrom((eb) => [
+        eb
+          .selectFrom('raffles')
+          .select((e) => e.fn.countAll<number>().as('c'))
+          .where('status', '=', 'active')
+          .as('active_raffles'),
+        eb
+          .selectFrom('raffle_numbers')
+          .select((e) => e.fn.countAll<number>().as('c'))
+          .where('status', '=', 'sold')
+          .as('numbers_sold'),
+        eb
+          .selectFrom('raffles')
+          .select((e) => e.fn.count<number>('user_id').distinct().as('c'))
+          .where('status', '!=', 'draft')
+          .as('organizers'),
+      ])
+      .executeTakeFirstOrThrow(),
+  ]);
+
+  const soldMap = new Map(soldRows.map((r) => [r.raffle_id, Number(r.sold)]));
+  const prizeMap = new Map<string, { title: string; image_url: string | null; count: number }>();
+  for (const p of prizeRows) {
+    const current = prizeMap.get(p.raffle_id);
+    if (!current) prizeMap.set(p.raffle_id, { title: p.title, image_url: p.image_url, count: 1 });
+    else current.count += 1;
+  }
+
+  const items = raffles
+    .map((r) => {
+      const sold = soldMap.get(r.id) ?? 0;
+      const prize = prizeMap.get(r.id);
+      return {
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        total_numbers: r.total_numbers,
+        price_per_number: r.price_per_number,
+        cover_icon: r.cover_icon,
+        draw_mode: r.draw_mode,
+        draw_date: r.draw_date,
+        confirmation_method: r.confirmation_method,
+        created_at: r.created_at,
+        sold,
+        main_prize: prize ? { title: prize.title, image_url: prize.image_url } : null,
+        prize_count: prize?.count ?? 0,
+        owner: { username: r.username, display_name: r.display_name, avatar_url: r.avatar_url },
+      };
+    })
+    // Rifas agotadas no sirven para "comprar rápido".
+    .filter((r) => r.sold < r.total_numbers)
+    .sort((a, b) => b.sold / b.total_numbers - a.sold / a.total_numbers)
+    .slice(0, EXPLORE_LIMIT);
+
+  return {
+    raffles: items,
+    stats: {
+      active_raffles: Number(totals.active_raffles ?? 0),
+      numbers_sold: Number(totals.numbers_sold ?? 0),
+      organizers: Number(totals.organizers ?? 0),
+    },
+  };
 }

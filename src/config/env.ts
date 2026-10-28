@@ -38,6 +38,12 @@ const envSchema = z.object({
   MERCADOPAGO_TOKEN_KEY: optional(
     z.string().regex(/^[0-9a-fA-F]{64}$/, 'Debe tener 64 caracteres hexadecimales')
   ),
+  // Comisión de Rifando (% sobre lo recaudado). Se copia a cada rifa nueva.
+  // Con Mercado Pago se retiene en cada pago (marketplace_fee). Sin Mercado Pago se paga antes de finalizar.
+  APP_FEE_PERCENT: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().min(0).max(50).default(0)),
+  // Comisión estimada de Mercado Pago con IVA, solo para la calculadora de precio.
+  // Checkout Pro, acreditación al instante: 6,29 % + IVA = 7,61 %. Verificá la tarifa vigente.
+  MERCADOPAGO_FEE_PERCENT: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().min(0).max(50).default(7.61)),
   // Registro de cuentas nuevas. Por defecto cerrado (acceso anticipado).
   REGISTRATION_OPEN: z
     .preprocess((v) => (v === '' ? undefined : v), z.enum(['true', 'false']).default('false'))

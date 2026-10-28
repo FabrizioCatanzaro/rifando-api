@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { db } from '../../db/client';
+import { appFeeAmount } from '../../utils/fees';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
 import type { MercadopagoPaymentOutcome } from '../../types/db';
@@ -250,6 +251,7 @@ async function getBuyerPurchase(raffleId: string, purchaseId: string, sessionId:
       'raffles.visibility',
       'raffles.access_code',
       'raffles.confirmation_method',
+      'raffles.app_fee_percent',
       'users.username',
     ])
     .where('purchases.id', '=', purchaseId)
@@ -313,6 +315,9 @@ export async function createCheckout(raffleId: string, purchaseId: string, sessi
     payment_methods: { excluded_payment_types: [{ id: 'ticket' }, { id: 'atm' }] },
     statement_descriptor: 'RIFANDO',
   };
+  // Comisión de Rifando: Mercado Pago la descuenta del pago y la acredita en la cuenta de la app.
+  const marketplaceFee = appFeeAmount(purchase.total, purchase.app_fee_percent);
+  if (marketplaceFee > 0) body.marketplace_fee = marketplaceFee;
   // Mercado Pago exige URLs https para el retorno automático y el webhook.
   if (backUrl.startsWith('https://')) body.auto_return = 'approved';
   if (cfg.apiUrl.startsWith('https://')) {
@@ -475,12 +480,19 @@ async function applyPayment(sellerUserId: string, payment: MpPayment) {
       kind = 'refunded';
     }
 
-    const fee = payment.fee_details?.reduce((sum, f) => sum + f.amount, 0);
+    // application_fee = comisión de Rifando (marketplace_fee). El resto es de Mercado Pago.
+    const appFee = payment.fee_details
+      ?.filter((f) => f.type === 'application_fee')
+      .reduce((sum, f) => sum + f.amount, 0);
+    const fee = payment.fee_details
+      ?.filter((f) => f.type !== 'application_fee')
+      .reduce((sum, f) => sum + f.amount, 0);
     const data = {
       status: payment.status,
       status_detail: payment.status_detail ?? null,
       amount: payment.transaction_amount,
       fee_amount: fee !== undefined ? roundMoney(fee) : null,
+      marketplace_fee: appFee !== undefined ? roundMoney(appFee) : null,
       net_amount: payment.transaction_details?.net_received_amount ?? null,
       payment_method_id: payment.payment_method_id ?? null,
       payer_email: payment.payer?.email ?? null,

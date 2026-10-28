@@ -14,6 +14,7 @@ export interface Database {
   username_history: UsernameHistoryTable;
   mercadopago_accounts: MercadopagoAccountsTable;
   mercadopago_payments: MercadopagoPaymentsTable;
+  raffle_fee_payments: RaffleFeePaymentsTable;
 }
 
 export interface UsernameHistoryTable {
@@ -68,8 +69,28 @@ export interface RafflesTable {
   rich_content: string | null;
   confirmation_method: Generated<ConfirmationMethod>;
   draw_unlocked: Generated<boolean>;
+  /** Comisión de Rifando (%) copiada de APP_FEE_PERCENT al crear la rifa. */
+  app_fee_percent: Generated<number>;
+  /** Meta de ganancia neta que cargó el rifante. */
+  target_amount: number | null;
+  /** Minutos que dura una reserva sin comprobante (rifas sin Mercado Pago). */
+  reservation_ttl_minutes: Generated<ReservationTtlMinutes>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+}
+
+export type ReservationTtlMinutes = 30 | 60 | 360 | 1440;
+
+export interface RaffleFeePaymentsTable {
+  id: Generated<string>;
+  raffle_id: string;
+  amount: number;
+  base_amount: number;
+  fee_percent: number;
+  comprobante_url: string;
+  status: Generated<'pending' | 'approved' | 'rejected'>;
+  created_at: Generated<Date>;
+  reviewed_at: Date | null;
 }
 
 export interface RaffleNumbersTable {
@@ -146,6 +167,8 @@ export interface MercadopagoPaymentsTable {
   amount: number;
   fee_amount: number | null;
   net_amount: number | null;
+  /** Comisión de Rifando retenida por Mercado Pago (application_fee). */
+  marketplace_fee: number | null;
   payment_method_id: string | null;
   payer_email: string | null;
   live_mode: Generated<boolean>;

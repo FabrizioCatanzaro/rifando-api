@@ -2,6 +2,7 @@ import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import { env } from '../../config/env';
 import { assertOwnComprobante } from '../../utils/comprobante';
+import { assertFeesSettled } from '../fees/fees.service';
 import type { SubmitDrawPaymentInput, ExecuteDrawInput } from './draw.schemas';
 
 export async function submitDrawPayment(raffleId: string, userId: string, input: SubmitDrawPaymentInput) {
@@ -77,6 +78,7 @@ export async function executeDraw(raffleId: string, userId: string, input: Execu
   if (raffle.user_id !== userId) throw new AppError('Sin permiso', 403);
   if (!raffle.draw_unlocked) throw new AppError('El sorteo automático no está habilitado para esta rifa', 403);
   if (raffle.status !== 'active') throw new AppError('La rifa debe estar activa para sortear', 400);
+  await assertFeesSettled(raffleId);
 
   const prizes = await db
     .selectFrom('prizes')

@@ -26,6 +26,12 @@ const baseRaffleSchema = z.object({
   prize_assignment_mode: z.enum(['automatic', 'sequential_choice']).default('automatic'),
   rich_content: z.record(z.unknown()).optional(),
   confirmation_method: z.enum(['whatsapp', 'upload', 'mercadopago']).default('whatsapp'),
+  // Minutos que quedan ocupados los números de una reserva sin comprobante.
+  reservation_ttl_minutes: z
+    .union([z.literal(30), z.literal(60), z.literal(360), z.literal(1440)])
+    .default(30),
+  // Meta de ganancia neta (informativa). El precio lo define price_per_number.
+  target_amount: z.number().positive().max(1_000_000_000).optional().nullable(),
 });
 
 // Una rifa siempre nace en borrador. Se publica con PATCH { status: 'active' }.
