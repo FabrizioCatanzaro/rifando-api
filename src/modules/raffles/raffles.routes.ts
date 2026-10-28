@@ -4,6 +4,9 @@ import * as controller from './raffles.controller';
 
 const router = Router();
 
+// Rifas activas para la home (público)
+router.get('/explore', controller.getExplore);
+
 // My raffles (authenticated)
 router.get('/', requireAuth, controller.getMyRaffles);
 router.post('/', requireAuth, controller.createRaffle);

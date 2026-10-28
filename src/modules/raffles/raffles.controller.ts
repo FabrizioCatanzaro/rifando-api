@@ -67,3 +67,13 @@ export async function finishRaffle(req: Request, res: Response, next: NextFuncti
     next(err);
   }
 }
+
+export async function getExplore(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await rafflesService.getExplore();
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
