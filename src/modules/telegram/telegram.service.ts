@@ -38,8 +38,20 @@ export async function createLink(userId: string) {
     .where('id', '=', userId)
     .execute();
 
+  const bot = env.TELEGRAM_BOT_USERNAME;
+  // tg:// abre la app de Telegram directo en el chat del bot, sin pasar por t.me.
+  // El botón "Iniciar" del chat envía "/start <token>".
+  const appUrl = `tg://resolve?domain=${bot}&start=${token}`;
+
   return {
-    url: `https://t.me/${env.TELEGRAM_BOT_USERNAME}?start=${token}`,
+    bot_username: bot,
+    token,
+    /** Abre la app instalada (celular o escritorio). */
+    app_url: appUrl,
+    /** Abre Telegram Web directo en el chat del bot. */
+    web_app_url: `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(appUrl)}`,
+    /** Link universal: sirve para el QR que se escanea con el celular. */
+    url: `https://t.me/${bot}?start=${token}`,
     expires_at: expiresAt.toISOString(),
   };
 }
@@ -91,8 +103,18 @@ export async function handleUpdate(update: TelegramUpdate) {
 
   if (!text || chatId === undefined) return;
 
-  const match = text.match(/^\/start\s+(\S+)$/);
-  if (!match) return;
+  const match = text.match(/^\/start(?:@\w+)?\s+(\S+)$/);
+  if (!match) {
+    // "/start" sin código: el usuario abrió el bot a mano.
+    if (/^\/start(@\w+)?$/.test(text)) {
+      await callTelegram('sendMessage', {
+        chat_id: chatId,
+        text:
+          '👋 Hola, soy el bot de Rifando.\n\nPara recibir avisos de tus rifas, entrá a Rifando → Mis datos → "Vincular Telegram" y tocá "Abrir Telegram".',
+      });
+    }
+    return;
+  }
 
   const token = match[1];
 

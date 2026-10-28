@@ -23,3 +23,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: 'Token inválido o expirado' });
   }
 }
+
+/** Devuelve el userId si hay una sesión válida. No corta la request si no la hay. */
+export function getOptionalUserId(req: Request): string | undefined {
+  const token = req.cookies?.access_token as string | undefined;
+  if (!token) return undefined;
+  try {
+    return verifyAccessToken(token).userId;
+  } catch {
+    return undefined;
+  }
+}

@@ -7,5 +7,6 @@ const router = Router();
 router.get('/:username', controller.getPublicProfile);
 router.get('/:username/raffles', controller.getPublicRaffles);
 router.patch('/profile', requireAuth, controller.updateProfile);
+router.patch('/username', requireAuth, controller.changeUsername);
 
 export default router;

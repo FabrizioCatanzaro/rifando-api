@@ -1,19 +1,54 @@
 import { z } from 'zod';
+import { formatCuit, normalizeAliasOrCbu, validateAliasOrCbu, validateCuit } from '../../utils/transfer';
+import { usernameSchema } from '../auth/auth.schemas';
 
-export const updateProfileSchema = z.object({
-  display_name: z.string().max(100).optional(),
-  whatsapp_number: z.string().max(20).optional(),
-  profile_public: z.boolean().optional(),
-  transfer_alias: z
+export const changeUsernameSchema = z.object({ username: usernameSchema });
+export type ChangeUsernameInput = z.infer<typeof changeUsernameSchema>;
+
+const optionalText = (max: number) =>
+  z
     .string()
-    .min(6, 'El alias debe tener al menos 6 caracteres')
-    .max(20, 'El alias debe tener como máximo 20 caracteres')
-    .regex(/^[A-Za-z0-9.\-]+$/, 'El alias solo admite letras (sin Ñ), números, puntos y guiones')
+    .trim()
+    .max(max)
     .optional()
-    .nullable(),
-  transfer_holder: z.string().max(150).optional().nullable(),
-  transfer_cuit: z.string().max(20).optional().nullable(),
-  transfer_bank: z.string().max(100).optional().nullable(),
-});
+    .nullable()
+    // undefined = no se envió (no se toca); vacío = se borra.
+    .transform((v) => (v === undefined ? undefined : v || null));
+
+export const updateProfileSchema = z
+  .object({
+    display_name: z.string().trim().min(1, 'El nombre completo es obligatorio').max(100).optional(),
+    whatsapp_number: z.string().max(20).optional(),
+    profile_public: z.boolean().optional(),
+    transfer_alias: optionalText(30),
+    transfer_holder: optionalText(150),
+    transfer_cuit: optionalText(20),
+    transfer_bank: optionalText(100),
+  })
+  .superRefine((data, ctx) => {
+    // Los datos de transferencia se cargan completos o no se cargan.
+    if (!data.transfer_alias) return;
+
+    const aliasError = validateAliasOrCbu(data.transfer_alias);
+    if (aliasError) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['transfer_alias'], message: aliasError });
+
+    if (!data.transfer_holder) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['transfer_holder'], message: 'El titular es obligatorio' });
+    }
+    if (!data.transfer_bank) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['transfer_bank'], message: 'La entidad bancaria es obligatoria' });
+    }
+    if (!data.transfer_cuit) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['transfer_cuit'], message: 'El CUIT/CUIL es obligatorio' });
+    } else {
+      const cuitError = validateCuit(data.transfer_cuit);
+      if (cuitError) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['transfer_cuit'], message: cuitError });
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    transfer_alias: data.transfer_alias ? normalizeAliasOrCbu(data.transfer_alias) : data.transfer_alias,
+    transfer_cuit: data.transfer_cuit ? formatCuit(data.transfer_cuit) : data.transfer_cuit,
+  }));
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

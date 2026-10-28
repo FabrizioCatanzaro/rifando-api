@@ -1,5 +1,7 @@
 import { db } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
+import { env } from '../../config/env';
+import { assertOwnComprobante } from '../../utils/comprobante';
 import type { SubmitDrawPaymentInput, ExecuteDrawInput } from './draw.schemas';
 
 export async function submitDrawPayment(raffleId: string, userId: string, input: SubmitDrawPaymentInput) {
@@ -13,6 +15,7 @@ export async function submitDrawPayment(raffleId: string, userId: string, input:
   if (raffle.user_id !== userId) throw new AppError('Sin permiso', 403);
   if (raffle.status !== 'active') throw new AppError('La rifa debe estar activa', 400);
   if (raffle.draw_unlocked) throw new AppError('El sorteo ya está habilitado para esta rifa', 409);
+  assertOwnComprobante(input.comprobante_url);
 
   const existing = await db
     .selectFrom('raffle_draw_payments')
@@ -49,7 +52,18 @@ export async function getDrawPayment(raffleId: string, userId: string) {
     .orderBy('created_at', 'desc')
     .executeTakeFirst();
 
-  return { draw_unlocked: raffle.draw_unlocked, payment: payment ?? null };
+  return { draw_unlocked: raffle.draw_unlocked, payment: payment ?? null, service: getDrawServiceInfo() };
+}
+
+/** Precio y datos de transferencia del servicio de sorteo. null si no está configurado. */
+export function getDrawServiceInfo() {
+  if (!env.DRAW_SERVICE_PRICE || !env.DRAW_SERVICE_ALIAS) return null;
+  return {
+    price: env.DRAW_SERVICE_PRICE,
+    alias: env.DRAW_SERVICE_ALIAS,
+    holder: env.DRAW_SERVICE_HOLDER ?? null,
+    bank: env.DRAW_SERVICE_BANK ?? null,
+  };
 }
 
 export async function executeDraw(raffleId: string, userId: string, input: ExecuteDrawInput) {

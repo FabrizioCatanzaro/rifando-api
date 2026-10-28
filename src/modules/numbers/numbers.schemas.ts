@@ -1,10 +1,23 @@
 import { z } from 'zod';
 
+export const MAX_NUMBERS_PER_RESERVATION = 20;
+
 export const reserveSchema = z.object({
-  numbers: z.array(z.number().int().min(0)).min(1).max(50),
+  numbers: z
+    .array(z.number().int().min(0))
+    .min(1)
+    .max(MAX_NUMBERS_PER_RESERVATION, `Podés reservar hasta ${MAX_NUMBERS_PER_RESERVATION} números por vez`),
   session_id: z.string().min(1).max(100),
-  buyer_name: z.string().min(1).max(150).optional(),
+  buyer_name: z
+    .string({ required_error: 'Ingresá tu nombre completo' })
+    .trim()
+    .min(3, 'Ingresá tu nombre completo')
+    .max(150),
   comprobante_url: z.string().url().optional(),
+});
+
+export const confirmPurchaseSchema = z.object({
+  buyer_name: z.string().trim().min(1).max(150).optional(),
 });
 
 export const bulkSellSchema = z.object({
@@ -32,6 +45,7 @@ export const updateBuyerSchema = z.object({
 });
 
 export type ReserveInput = z.infer<typeof reserveSchema>;
+export type ConfirmPurchaseInput = z.infer<typeof confirmPurchaseSchema>;
 export type SellNumberInput = z.infer<typeof sellNumberSchema>;
 export type UpdateBuyerInput = z.infer<typeof updateBuyerSchema>;
 export type BulkSellInput = z.infer<typeof bulkSellSchema>;
